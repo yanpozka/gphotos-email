@@ -49,8 +49,8 @@ func init() {
 		Cid     string `json:"cid"`
 		Csecret string `json:"csecret"`
 	}{
-		Cid:     os.Getenv("GOOGLE_PROJECT_CLIENT_ID"),
-		Csecret: os.Getenv("GOOGLE_PROJECT_SECRET"),
+		Cid:     os.Getenv("GOOGLE_CLIENT_ID"),
+		Csecret: os.Getenv("GOOGLE_SECRET"),
 	}
 	if cred.Cid == "" || cred.Csecret == "" {
 		log.Panic("client_id and secret are required")
@@ -184,7 +184,7 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println("error parsing unix time: ", err)
 			continue
 		}
-		fmt.Println(pd)
+		// fmt.Println(pd)
 		info.imgs = append(info.imgs, &image{
 			Title: t, URL: u, Date: pd,
 		})
@@ -233,6 +233,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/auth", authHandler)
 
