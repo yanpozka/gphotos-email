@@ -1,8 +1,34 @@
 import React, { Component } from 'react';
 import { StyleSheet } from 'react-native';
-import { Container, Header, Content, List, ListItem, Text, Thumbnail, Body } from 'native-base';
+import { Container, Header, Content, List, ListItem, Text, Thumbnail, Body, Button } from 'native-base';
 
-export default class DynamicPhtosList extends Component {
+export default class Main extends Component {
+  render() {
+    let logued = true;
+
+    if (logued) {
+      return (
+        <PhtosList />
+      )
+    }
+
+    return (
+      <Login />
+    )
+  }
+}
+
+class Login extends Component {
+  render() {
+    return (
+      <Container>
+        <Button>Login with Google</Button>
+      </Container>
+    )
+  }
+}
+
+class PhtosList extends Component {
   render() {
     var photos = [
       { name: 'Uno Ahi', url: 'https://pbs.twimg.com/profile_images/909918194701279232/UDem5J8J_400x400.jpg' },
@@ -35,8 +61,11 @@ class ImageItem extends Component {
 
     return (
       <ListItem
-        onPress={() => { this.setState({ selected: !this.state.selected }) }}
+        onPress={() => {
+          this.setState({ selected: !this.state.selected })
+        }}
         style={this.state.selected ? styles.itemListSelected : styles.itemList}>
+
         <Thumbnail square size={180} source={{ uri: item.url }} />
         <Body>
           <Text>{item.name}</Text>
