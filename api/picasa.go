@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -21,35 +23,41 @@ var (
 	entryTitlePath = xmlpath.MustCompile("title")
 )
 
-func photosHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, defaultKey)
+const authHeader = "X-Auth-Token"
 
+func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
+	//
 	// IMPROVE (yandry): add middleware here
 	//
 	var currentUser *user
-	var token *oauth2.Token
+	var token oauth2.Token
 	{
-		tok, contains := session.Values[tokenKey]
-		if !contains {
+		tok := r.Header.Get(authHeader)
+		if tok == "" {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
-		token = tok.(*oauth2.Token)
 
-		cuser, contains := session.Values[token]
-		if !contains {
+		tokBytes, _ := h.store.Get([]byte(tok)) // TODO (yandry): 500 in case of err
+		if tokBytes == nil {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
-		currentUser = cuser.(*user)
+
+		var buff bytes.Buffer
+		if err := gob.NewDecoder(&buff).Decode(&token); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
-	client := conf.Client(context.Background(), token)
+
+	client := h.conf.Client(context.Background(), &token)
 
 	var root *xmlpath.Node
 	{
 		u := makePicasaURL(currentUser.Sub, 3)
 
-		res, err := client.Do(&http.Request{Method: "GET", URL: u})
+		res, err := client.Do(&http.Request{Method: http.MethodGet, URL: u})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

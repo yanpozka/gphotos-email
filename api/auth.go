@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -20,56 +23,61 @@ type user struct {
 	Picture    string `json:"picture"`
 }
 
-func authHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, defaultKey)
+func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
+	receivedState := r.URL.Query().Get(stateKey)
 
-	retrievedState := session.Values[stateKey]
-	if retrievedState != r.URL.Query().Get(stateKey) {
-		http.Error(w, fmt.Sprintf("Invalid session state: %q", retrievedState), http.StatusUnauthorized)
+	savedState, _ := h.store.Get([]byte(receivedState)) // TODO(yandry): 500 in case of err
+	if savedState == nil {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 
-	token, err := conf.Exchange(oauth2.NoContext, r.URL.Query().Get("code"))
+	if string(savedState) != receivedState {
+		http.Error(w, fmt.Sprintf("Saved state: %q mismatch received state from url: %q", savedState, receivedState), http.StatusUnauthorized)
+		return
+	}
+
+	tokenObj, err := h.conf.Exchange(oauth2.NoContext, r.URL.Query().Get("code"))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid session state: %q", retrievedState), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("Failed exchange with code=%q", r.URL.Query().Get("code")), http.StatusInternalServerError)
 		return
 	}
 
-	client := conf.Client(oauth2.NoContext, token)
-
-	currentUser, err := getUser(w, client)
+	currentUser, err := getUser(w, h.conf.Client(oauth2.NoContext, tokenObj))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	session.Values[tokenKey] = token
-	session.Values[token] = currentUser
-	session.Save(r, w)
-}
+	genToken := randToken()
+	var buff bytes.Buffer
 
-func loginURLHandler(w http.ResponseWriter, r *http.Request) {
-	state := randToken()
-
-	session, _ := store.Get(r, defaultKey)
-	session.Values[stateKey] = state
-	session.Save(r, w)
-
-	data := map[string]string{
-		"url": getLoginURL(state),
+	sessionInfo := map[string]interface{}{
+		"user":   currentUser,
+		"gtoken": tokenObj,
 	}
+	if err := gob.NewEncoder(&buff).Encode(sessionInfo); err != nil {
+		http.Error(w, "encoding session info error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.store.Set([]byte(genToken), buff.Bytes())
 
-	json.NewEncoder(w).Encode(&data) // in JSON we trust
+	if err := json.NewEncoder(w).Encode(map[string]string{"token": genToken}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
-func randToken() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return base64.StdEncoding.EncodeToString(b)
-}
+func (h *handler) loginURL(w http.ResponseWriter, r *http.Request) {
+	state := randToken()
+	epoch := fmt.Sprintf("%d", time.Now().UnixNano())
 
-func getLoginURL(state string) string {
-	return conf.AuthCodeURL(state)
+	h.store.Set([]byte(state), []byte(epoch)) // TODO(yandry): 500 in case of err
+
+	data := map[string]string{"url": h.getLoginURL(state)}
+
+	if err := json.NewEncoder(w).Encode(&data); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError)+" "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func getUser(w http.ResponseWriter, client *http.Client) (*user, error) {
@@ -84,15 +92,23 @@ func getUser(w http.ResponseWriter, client *http.Client) (*user, error) {
 		return nil, err
 	}
 	if u.Sub == "" {
-		return nil, fmt.Errorf("user id not found :(")
+		return nil, fmt.Errorf("getUser(): user id not found :(")
 	}
 
 	return &u, nil
 }
 
+func randToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func (h *handler) getLoginURL(state string) string {
+	return h.conf.AuthCodeURL(state)
+}
+
 const (
-	defaultKey  = "default"
 	stateKey    = "state"
-	tokenKey    = "token"
 	userinfoURL = "https://www.googleapis.com/oauth2/v3/userinfo"
 )
