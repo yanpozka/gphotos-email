@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/oauth2"
@@ -59,12 +60,26 @@ func main() {
 
 	h := handler{conf: conf, store: db}
 
-	http.HandleFunc("/loginurl", h.loginURL)
-	http.HandleFunc("/auth", h.auth)
-	http.HandleFunc("/photos", h.photoList)
+	http.Handle("/loginurl", mw(http.HandlerFunc(h.loginURL)))
+	http.Handle("/auth", mw(http.HandlerFunc(h.auth)))
+	http.Handle("/photos", mw(http.HandlerFunc(h.photoList)))
 
-	addr := ":8080"
+	addr := os.Getenv("API_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
 	log.Printf("Listening on muy lindo %s ...\n", addr)
 
 	log.Println(http.ListenAndServe(addr, nil))
+}
+
+func mw(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+		h.ServeHTTP(w, r)
+
+		log.Printf("%s %s (%s) Time consumed: %s", r.Method, r.RequestURI, r.RemoteAddr, time.Since(start))
+	})
 }
