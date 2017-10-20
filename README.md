@@ -16,3 +16,11 @@ export GOOGLE_SECRET="your-secret"
 
 make run
 ```
+
+#### Run terraform infrastructure:
+```bash
+cd infra
+terraform apply -state=/path/to/terraform.tfstate
+# or
+terraform plan -state=/path/to/terraform.tfstate
+```
