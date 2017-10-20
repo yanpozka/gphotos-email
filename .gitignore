@@ -1,2 +1,4 @@
 data.db
 gFotosApp/.expo
+terraform.tfstate*
+.terraform/
