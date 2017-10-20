@@ -67,6 +67,7 @@ class OauthWebView extends Component {
     return (
       <WebView
         source={{ uri: this.state.url }}
+        // TODO: make it work for iOS, this only works for Android :(
         userAgent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3163.100 Safari/537.36"
       />
     )
