@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+var Version, BuildTime string
+
 type handler struct {
 	conf  *oauth2.Config
 	store kvstore.Store
@@ -21,6 +24,7 @@ type handler struct {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.SetPrefix(fmt.Sprintf("[%s] ", Version))
 
 	cid := os.Getenv("GOOGLE_CLIENT_ID")
 	csecret := os.Getenv("GOOGLE_SECRET")
@@ -74,7 +78,7 @@ func main() {
 	signal.Notify(ch, os.Interrupt, os.Kill)
 
 	go func() {
-		log.Printf("Starting to listen on %s ...", addr)
+		log.Printf("Starting listening on address %q BuildTime: %s", addr, BuildTime)
 		log.Println(srv.ListenAndServe())
 	}()
 
