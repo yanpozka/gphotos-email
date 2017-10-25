@@ -4,8 +4,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"runtime/debug"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -51,26 +54,31 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		os.Remove(path)
-		if err := db.Close(); err != nil {
-			log.Println(err)
-		}
-	}()
-
-	h := handler{conf: conf, store: db}
-
-	http.Handle("/loginurl", mw(http.HandlerFunc(h.loginURL)))
-	http.Handle("/auth", mw(http.HandlerFunc(h.auth)))
-	http.Handle("/photos", mw(http.HandlerFunc(h.photoList)))
+	defer db.Close()
 
 	addr := os.Getenv("API_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
-	log.Printf("Listening on muy lindo %s ...\n", addr)
 
-	log.Println(http.ListenAndServe(addr, nil))
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: createRouter(&handler{conf: conf, store: db}),
+
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 8 * time.Second,
+		WriteTimeout:      15 * time.Second,
+	}
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, os.Kill)
+
+	go func() {
+		log.Printf("Starting to listen on %s ...", addr)
+		log.Println(srv.ListenAndServe())
+	}()
+
+	log.Printf("Got signal: %v", <-ch)
 }
 
 func mw(h http.Handler) http.Handler {
@@ -82,4 +90,33 @@ func mw(h http.Handler) http.Handler {
 
 		log.Printf("%s %s (%s) Time consumed: %s", r.Method, r.RequestURI, r.RemoteAddr, time.Since(start))
 	})
+}
+
+func createRouter(h *handler) http.Handler {
+	router := httprouter.New()
+
+	router.PanicHandler = func(w http.ResponseWriter, r *http.Request, v interface{}) {
+		log.Printf("Recovering: %+v\nrequest: %s %q %s", v, r.Method, r.URL, r.RemoteAddr)
+		debug.PrintStack()
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	}
+
+	router.NotFound = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Detected Not Found: %s %q %s", r.Method, r.URL, r.RemoteAddr)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+	})
+
+	router.MethodNotAllowed = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Detected Method Now Allowed: %s %q %s", r.Method, r.URL, r.RemoteAddr)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+	})
+
+	// routers:
+	{
+		router.Handler(http.MethodGet, "/loginurl", mw(http.HandlerFunc(h.loginURL)))
+		router.Handler(http.MethodGet, "/auth", mw(http.HandlerFunc(h.auth)))
+		router.Handler(http.MethodGet, "/photos", mw(http.HandlerFunc(h.photoList)))
+	}
+
+	return router
 }
