@@ -28,9 +28,10 @@ func main() {
 
 	cid := os.Getenv("GOOGLE_CLIENT_ID")
 	csecret := os.Getenv("GOOGLE_SECRET")
+	redirectURL := os.Getenv("REDIRECT_URL")
 
-	if cid == "" || csecret == "" {
-		log.Panic("client_id and secret are required")
+	if cid == "" || csecret == "" || redirectURL == "" {
+		log.Panic("client_id, secret and redirect URL are required")
 	}
 
 	// oauth configuration:
@@ -38,7 +39,7 @@ func main() {
 	conf := &oauth2.Config{
 		ClientID:     cid,
 		ClientSecret: csecret,
-		RedirectURL:  "http://127.0.0.1:8080/auth",
+		RedirectURL:  redirectURL,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.profile",
 			"https://picasaweb.google.com/data/", // select your own scope here -> https://developers.google.com/identity/protocols/googlescopes

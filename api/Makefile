@@ -22,5 +22,5 @@ docker:
 	-@make clean
 
 run:
-	# go clean -i -n github.com/yanpozka/gphotos-email/api
-	go install && api
+	@go install -ldflags '-X main.Version=dev-${VERSION} -X main.BuildTime=${BUILD_TIME}' && api
+# go clean -i -n github.com/yanpozka/gphotos-email/api
