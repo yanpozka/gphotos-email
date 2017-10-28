@@ -2,10 +2,8 @@ import React, { Component } from 'react';
 import { StyleSheet, WebView } from 'react-native';
 import { Body, Button, Container, Content, Header, Icon, List, ListItem, Text, Thumbnail } from 'native-base';
 import { StackNavigator } from 'react-navigation';
+import config from './config';
 
-const config = {
-  url: 'http://10.0.0.120:8080',
-};
 
 class Main extends Component {
   constructor(props) {

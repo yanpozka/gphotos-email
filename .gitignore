@@ -3,3 +3,5 @@ gFotosApp/.expo
 terraform.tfstate*
 .terraform/
 vendor/
+gFotosApp/config.js
+
