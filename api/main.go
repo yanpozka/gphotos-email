@@ -55,7 +55,7 @@ func main() {
 		path = "data.db"
 	}
 
-	db, err := kvstore.NewBoltDBStore(path, "")
+	db, err := kvstore.NewBoltDBStore(path)
 	if err != nil {
 		log.Fatal(err)
 	}

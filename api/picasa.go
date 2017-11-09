@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	xmlpath "gopkg.in/xmlpath.v2"
@@ -26,9 +27,6 @@ var (
 const authHeader = "X-Auth-Token"
 
 func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
-	//
-	// IMPROVE (yandry): add middleware here
-	//
 	var currentUser *user
 	var token oauth2.Token
 	{
@@ -38,7 +36,7 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		tokBytes, _ := h.store.Get([]byte(tok)) // TODO (yandry): 500 in case of err
+		tokBytes, _ := h.store.Get(kvstore.DefaultBucket, []byte(tok)) // TODO (yandry): 500 in case of err
 		if tokBytes == nil {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
@@ -77,12 +75,8 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var info struct {
-		AuthorName   string
-		AuthorPicURL string
-		imgs         []*image
+		Images []*image `json:"images"`
 	}
-	info.AuthorName = currentUser.Name
-	info.AuthorPicURL = currentUser.Picture
 
 	itr := entriesPath.Iter(root)
 	for itr.Next() {
@@ -100,8 +94,8 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 			log.Println("error parsing unix time: ", err)
 			continue
 		}
-		// fmt.Println(pd)
-		info.imgs = append(info.imgs, &image{
+
+		info.Images = append(info.Images, &image{
 			Title: t, URL: u, Date: pd,
 		})
 	}

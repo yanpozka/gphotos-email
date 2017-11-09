@@ -7,9 +7,11 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
+	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/oauth2"
 )
 
@@ -26,7 +28,8 @@ type user struct {
 func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 	receivedState := r.URL.Query().Get(stateKey)
 
-	savedState, _ := h.store.Get([]byte(receivedState)) // TODO(yandry): 500 in case of err
+	savedState, err := h.store.Get(kvstore.DefaultBucket, []byte(receivedState))
+	panicIfErr(err)
 	if savedState == nil {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
@@ -60,7 +63,9 @@ func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "encoding session info error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.store.Set([]byte(genToken), buff.Bytes())
+
+	err = h.store.Set(kvstore.DefaultBucket, []byte(genToken), buff.Bytes())
+	panicIfErr(err)
 
 	if err := json.NewEncoder(w).Encode(map[string]string{"token": genToken}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -71,12 +76,22 @@ func (h *handler) loginURL(w http.ResponseWriter, r *http.Request) {
 	state := randToken()
 	epoch := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	h.store.Set([]byte(state), []byte(epoch)) // TODO(yandry): 500 in case of err
+	h.store.Set(kvstore.DefaultBucket, []byte(state), []byte(epoch)) // TODO(yandry): 500 in case of err
 
 	data := map[string]string{"url": h.getLoginURL(state)}
 
 	if err := json.NewEncoder(w).Encode(&data); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError)+" "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (h *handler) getLoginURL(state string) string {
+	return h.conf.AuthCodeURL(state)
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		log.Panic(err)
 	}
 }
 
@@ -102,10 +117,6 @@ func randToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.StdEncoding.EncodeToString(b)
-}
-
-func (h *handler) getLoginURL(state string) string {
-	return h.conf.AuthCodeURL(state)
 }
 
 const (
