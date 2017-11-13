@@ -55,7 +55,7 @@ func main() {
 		path = "data.db"
 	}
 
-	db, err := kvstore.NewBoltDBStore(path, "")
+	db, err := kvstore.NewBoltDBStore(path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func createRouter(h *handler) http.Handler {
 	router := httprouter.New()
 
 	router.PanicHandler = func(w http.ResponseWriter, r *http.Request, v interface{}) {
-		log.Printf("Recovering: %+v\nrequest: %s %q %s", v, r.Method, r.URL, r.RemoteAddr)
+		log.Printf("Recovering with value: %#v\nrequest: %s %q %s", v, r.Method, r.URL, r.RemoteAddr)
 		debug.PrintStack()
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}

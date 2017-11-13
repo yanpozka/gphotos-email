@@ -11,7 +11,7 @@ func TestCreateDBAsInterface(t *testing.T) {
 	var db Store
 	var err error
 
-	db, err = NewBoltDBStore("/tmp/test.db", "bucketName")
+	db, err = NewBoltDBStore("/tmp/test.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestCreateDBAsInterface(t *testing.T) {
 }
 
 func TestSetAndGet(t *testing.T) {
-	db, err := NewBoltDBStore(fmt.Sprintf("/tmp/test_%d.db", time.Now().UnixNano()), "bucketName")
+	db, err := NewBoltDBStore(fmt.Sprintf("/tmp/test_%d.db", time.Now().UnixNano()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,11 +31,11 @@ func TestSetAndGet(t *testing.T) {
 	keyTest := []byte("key-testing")
 	valTest := []byte("value-testing")
 
-	if err := db.Set(keyTest, valTest); err != nil {
+	if err := db.Set(DefaultBucket, keyTest, valTest); err != nil {
 		t.Fatal(err)
 	}
 
-	val, err := db.Get(keyTest)
+	val, err := db.Get(DefaultBucket, keyTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,13 +50,13 @@ func TestSetAndGet(t *testing.T) {
 }
 
 func TestNotFoundKey(t *testing.T) {
-	db, err := NewBoltDBStore(fmt.Sprintf("/tmp/test_%d.db", time.Now().UnixNano()), "bucketName")
+	db, err := NewBoltDBStore(fmt.Sprintf("/tmp/test_%d.db", time.Now().UnixNano()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(db.Path())
 
-	val, err := db.Get([]byte("non existing key"))
+	val, err := db.Get(DefaultBucket, []byte("non existing key"))
 	if err != nil {
 		t.Fatal(err)
 	}
