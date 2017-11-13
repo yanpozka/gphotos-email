@@ -25,18 +25,17 @@ type user struct {
 	Picture    string `json:"picture"`
 }
 
+type sessionInfo struct {
+	User   *user         `json:"user"`
+	GToken *oauth2.Token `json:"gtoken"`
+}
+
 func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 	receivedState := r.URL.Query().Get(stateKey)
 
 	savedState, err := h.store.Get(kvstore.DefaultBucket, []byte(receivedState))
-	panicIfErr(err)
-	if savedState == nil {
+	if err != nil || savedState == nil {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-
-	if string(savedState) != receivedState {
-		http.Error(w, fmt.Sprintf("Saved state: %q mismatch received state from url: %q", savedState, receivedState), http.StatusUnauthorized)
 		return
 	}
 
@@ -52,33 +51,32 @@ func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	genToken := randToken()
 	var buff bytes.Buffer
+	si := sessionInfo{User: currentUser, GToken: tokenObj}
 
-	sessionInfo := map[string]interface{}{
-		"user":   currentUser,
-		"gtoken": tokenObj,
-	}
-	if err := gob.NewEncoder(&buff).Encode(sessionInfo); err != nil {
+	if err := gob.NewEncoder(&buff).Encode(si); err != nil {
 		http.Error(w, "encoding session info error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = h.store.Set(kvstore.DefaultBucket, []byte(genToken), buff.Bytes())
+	err = h.store.Set(kvstore.DefaultBucket, []byte(receivedState), buff.Bytes())
 	panicIfErr(err)
 
-	if err := json.NewEncoder(w).Encode(map[string]string{"token": genToken}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *handler) loginURL(w http.ResponseWriter, r *http.Request) {
 	state := randToken()
 	epoch := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	h.store.Set(kvstore.DefaultBucket, []byte(state), []byte(epoch)) // TODO(yandry): 500 in case of err
+	err := h.store.Set(kvstore.DefaultBucket, []byte(state), []byte(epoch))
+	panicIfErr(err)
 
-	data := map[string]string{"url": h.getLoginURL(state)}
+	data := map[string]string{
+		"url":   h.getLoginURL(state),
+		"token": state,
+	}
+	log.Print(data["url"])
 
 	if err := json.NewEncoder(w).Encode(&data); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError)+" "+err.Error(), http.StatusInternalServerError)

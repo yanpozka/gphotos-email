@@ -13,13 +13,12 @@ import (
 
 	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/net/context"
-	"golang.org/x/oauth2"
 	xmlpath "gopkg.in/xmlpath.v2"
 )
 
 var (
 	entriesPath    = xmlpath.MustCompile("/feed/entry")
-	entryURLPath   = xmlpath.MustCompile("content/@src")
+	entryURLPath   = xmlpath.MustCompile("group/content/@url")
 	entryDatePath  = xmlpath.MustCompile("timestamp") // has a prefix `gphoto:`
 	entryTitlePath = xmlpath.MustCompile("title")
 )
@@ -27,8 +26,7 @@ var (
 const authHeader = "X-Auth-Token"
 
 func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
-	var currentUser *user
-	var token oauth2.Token
+	var si sessionInfo
 	{
 		tok := r.Header.Get(authHeader)
 		if tok == "" {
@@ -36,24 +34,27 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		tokBytes, _ := h.store.Get(kvstore.DefaultBucket, []byte(tok)) // TODO (yandry): 500 in case of err
-		if tokBytes == nil {
+		data, err := h.store.Get(kvstore.DefaultBucket, []byte(tok))
+		panicIfErr(err)
+		if data == nil {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
 
-		var buff bytes.Buffer
-		if err := gob.NewDecoder(&buff).Decode(&token); err != nil {
+		buff := bytes.NewBuffer(data)
+
+		if err := gob.NewDecoder(buff).Decode(&si); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
-	client := h.conf.Client(context.Background(), &token)
+	client := h.conf.Client(context.Background(), si.GToken)
 
 	var root *xmlpath.Node
 	{
-		u := makePicasaURL(currentUser.Sub, 3)
+		u := makePicasaURL(si.User.Sub, 11)
+		log.Printf("Getting url: %v", u)
 
 		res, err := client.Do(&http.Request{Method: http.MethodGet, URL: u})
 		if err != nil {
@@ -80,7 +81,11 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 
 	itr := entriesPath.Iter(root)
 	for itr.Next() {
-		u, _ := entryURLPath.String(itr.Node())
+		u, found := entryURLPath.String(itr.Node())
+		if !found {
+			log.Printf("URL not found in entry: %q", itr.Node().String())
+			continue
+		}
 		t, _ := entryTitlePath.String(itr.Node())
 
 		d, found := entryDatePath.String(itr.Node())
@@ -96,7 +101,9 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		info.Images = append(info.Images, &image{
-			Title: t, URL: u, Date: pd,
+			Title: t,
+			URL:   u,
+			Date:  pd,
 		})
 	}
 
@@ -109,9 +116,9 @@ func makePicasaURL(id string, maxResults int) *url.URL {
 	u, _ := url.Parse(fmt.Sprintf("https://picasaweb.google.com/data/feed/api/user/%s", id))
 
 	q := u.Query()
-	q.Set("kind", "photo")
+	// q.Set("kind", "photo")
+	// q.Set("imgmax", "1600")
 	q.Set("max-results", fmt.Sprintf("%d", maxResults))
-	q.Set("imgmax", "1600")
 	u.RawQuery = q.Encode()
 
 	return u
