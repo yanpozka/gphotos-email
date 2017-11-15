@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/net/context"
 	xmlpath "gopkg.in/xmlpath.v2"
 )
@@ -23,30 +20,10 @@ var (
 	entryTitlePath = xmlpath.MustCompile("title")
 )
 
-const authHeader = "X-Auth-Token"
-
 func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
-	var si sessionInfo
-	{
-		tok := r.Header.Get(authHeader)
-		if tok == "" {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-
-		data, err := h.store.Get(kvstore.DefaultBucket, []byte(tok))
-		panicIfErr(err)
-		if data == nil {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-
-		buff := bytes.NewBuffer(data)
-
-		if err := gob.NewDecoder(buff).Decode(&si); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	si, ok := r.Context().Value(sessionKey).(*sessionInfo)
+	if !ok {
+		log.Panic("sessionInfo not found")
 	}
 
 	client := h.conf.Client(context.Background(), si.GToken)
@@ -90,7 +67,7 @@ func (h *handler) photoList(w http.ResponseWriter, r *http.Request) {
 
 		d, found := entryDatePath.String(itr.Node())
 		if !found {
-			log.Println("date not found in entry: %q", itr.Node().String())
+			log.Printf("date not found in entry: %q", itr.Node().String())
 			continue
 		}
 

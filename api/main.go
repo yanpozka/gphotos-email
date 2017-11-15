@@ -10,12 +10,19 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/justinas/alice"
 	"github.com/yanpozka/gphotos-email/api/kvstore"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	gmail "google.golang.org/api/gmail/v1"
 )
 
-var Version, BuildTime string
+var (
+	// Version as semantic notation + hash commit
+	Version string
+	// BuildTime or compile time
+	BuildTime string
+)
 
 type handler struct {
 	conf  *oauth2.Config
@@ -42,8 +49,8 @@ func main() {
 		RedirectURL:  redirectURL,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.profile",
-			"https://picasaweb.google.com/data/", // select your own scope here -> https://developers.google.com/identity/protocols/googlescopes
-			// TODO(yandry): add Gmail scope here
+			"https://picasaweb.google.com/data/",
+			gmail.GmailSendScope,
 		},
 		Endpoint: google.Endpoint,
 	}
@@ -86,17 +93,6 @@ func main() {
 	log.Printf("Got signal: %v", <-ch)
 }
 
-func mw(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-
-		h.ServeHTTP(w, r)
-
-		log.Printf("%s %s (%s) Time consumed: %s", r.Method, r.RequestURI, r.RemoteAddr, time.Since(start))
-	})
-}
-
 func createRouter(h *handler) http.Handler {
 	router := httprouter.New()
 
@@ -116,12 +112,23 @@ func createRouter(h *handler) http.Handler {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 	})
 
+	stdCh := alice.New(h.logger, h.commonHeaders)
+	authCh := stdCh.Append(h.authMW)
+
 	// routers:
 	{
-		router.Handler(http.MethodGet, "/loginurl", mw(http.HandlerFunc(h.loginURL)))
-		router.Handler(http.MethodGet, "/auth", mw(http.HandlerFunc(h.auth)))
-		router.Handler(http.MethodGet, "/photos", mw(http.HandlerFunc(h.photoList)))
+		router.Handler(http.MethodGet, "/loginurl", stdCh.ThenFunc(h.loginURL))
+		router.Handler(http.MethodGet, "/auth", stdCh.ThenFunc(h.auth))
+
+		router.Handler(http.MethodGet, "/photos", authCh.ThenFunc(h.photoList))
+		router.Handler(http.MethodPost, "/email", authCh.ThenFunc(h.sendEmail))
 	}
 
 	return router
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		log.Panicf("%#v", err)
+	}
 }

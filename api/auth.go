@@ -26,8 +26,8 @@ type user struct {
 }
 
 type sessionInfo struct {
-	User   *user         `json:"user"`
-	GToken *oauth2.Token `json:"gtoken"`
+	User   *user
+	GToken *oauth2.Token
 }
 
 func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
@@ -59,8 +59,7 @@ func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.store.Set(kvstore.DefaultBucket, []byte(receivedState), buff.Bytes())
-	panicIfErr(err)
+	panicIfErr(h.store.Set(kvstore.DefaultBucket, []byte(receivedState), buff.Bytes()))
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -84,13 +83,7 @@ func (h *handler) loginURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) getLoginURL(state string) string {
-	return h.conf.AuthCodeURL(state)
-}
-
-func panicIfErr(err error) {
-	if err != nil {
-		log.Panic(err)
-	}
+	return h.conf.AuthCodeURL(state, oauth2.AccessTypeOffline)
 }
 
 func getUser(w http.ResponseWriter, client *http.Client) (*user, error) {
