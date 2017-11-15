@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/textproto"
 
+	"github.com/jordan-wright/email"
 	"golang.org/x/net/context"
 	gmail "google.golang.org/api/gmail/v1"
 )
@@ -13,13 +16,18 @@ import (
 func (h *handler) sendEmail(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	// {
-	//	"url": "http://",
-	//	"text": "abcde 1234"
-	// }
-	data := map[string]string{}
+	var data struct {
+		URL       string `json:"url"`
+		Text      string `json:"text"`
+		Subject   string `json:"subject,omitempty"`
+		EmailAddr string `json:"email"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid JSON format", http.StatusBadRequest)
+		return
+	}
+	if data.URL == "" || data.EmailAddr == "" {
+		http.Error(w, "URL and email address are required", http.StatusBadRequest)
 		return
 	}
 
@@ -28,29 +36,33 @@ func (h *handler) sendEmail(w http.ResponseWriter, r *http.Request) {
 		log.Panic("sessionInfo not found")
 	}
 
+	// fetch image
+	res, err := http.Get(data.URL)
+	if err != nil {
+		log.Printf("%#v", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	defer res.Body.Close()
+
 	srv, err := gmail.New(h.conf.Client(context.Background(), si.GToken))
 	panicIfErr(err)
 
 	var message gmail.Message
 
-	// text := base64.URLEncoding.EncodeToString([]byte(data["text"]))
-	text := data["text"]
+	e := &email.Email{
+		To:      []string{data.EmailAddr},
+		From:    fmt.Sprintf("%s <%s>", si.User.GivenName, data.EmailAddr),
+		Subject: data.Subject,
+		Text:    []byte(data.Text),
+		Headers: textproto.MIMEHeader{},
+	}
+	// pipe response reader
+	e.Attach(res.Body, "photo.jpg", res.Header.Get("Content-Type"))
 
-	// payload := gmail.MessagePart{
-	// 	Headers: []*gmail.MessagePartHeader{
-	// 		{Name: "From", Value: "ypozoka@gmail.com"},
-	// 		{Name: "To", Value: "ypozoka@gmail.com"},
-	// 		{Name: "Subject", Value: "Este si carajo"},
-	// 	},
-	// 	Body: &gmail.MessagePartBody{Data: text},
-	// }
-	// message.Payload = &payload
-
-	messageStr := []byte("From: ypozoka@gmail.com\r\n" +
-		"To: ypozoka@gmail.com\r\n" +
-		"Subject: Un two y tres\r\n\r\n" +
-		text)
-	message.Raw = base64.URLEncoding.EncodeToString(messageStr)
+	bb, err := e.Bytes()
+	panicIfErr(err)
+	message.Raw = base64.URLEncoding.EncodeToString(bb)
 
 	_, err = srv.Users.Messages.Send("me", &message).Do()
 	panicIfErr(err)
